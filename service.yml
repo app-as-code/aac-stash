@@ -1,0 +1,128 @@
+service:
+  name: aac-stash
+  image_repo: stashapp/stash
+  image_tag: v0.31.1
+  description: Selbstgehostete Medienverwaltung (NSFW)
+  icon: stash.png
+  category: Medien & Entertainment
+  stage: prod
+  hostname: stash
+ports:
+- name: web
+  port: 9999
+  external_port: 9999
+  protocol: TCP
+config:
+  domain_name: example.com
+  generate_hostname: false
+  integrations:
+    homepage:
+      enabled: false
+    autodns:
+      enabled: true
+    traefik:
+      enabled: true
+      cert_resolver: ionos
+      entrypoint: websecure
+  schema_version: 2
+stage_overrides:
+  prod:
+    config:
+      generate_hostname: false
+    service:
+      hostname: stash
+secrets:
+  DB_PASSWORD: CHANGE_ME
+  POSTGRES_DB: stash
+  POSTGRES_USER: stash
+  POSTGRES_PASSWORD: CHANGE_ME
+volumes:
+  config:
+    description: Stash application configuration
+  data:
+    description: Stash main data directory
+  metadata:
+    description: Stash metadata storage
+  cache:
+    description: Stash cache directory
+  blobs:
+    description: Stash blobs storage
+  generated:
+    description: Stash generated content (previews, sprites)
+  local_time:
+    type: bind
+    source: /etc/localtime
+  nsfw_media:
+    type: bind
+    source: /mnt/homenas/nsfw
+  db_data:
+    description: Data for database
+deployment_strategy:
+  main:
+    enabled: true
+    target_stage: prod
+  dev:
+    enabled: true
+    target_stage: dev
+  test:
+    enabled: false
+    target_stage: test
+  ansible-dev:
+    enabled: true
+    target_stage: dev
+  iac-dev:
+    enabled: true
+    target_stage: dev
+  template-dev:
+    enabled: true
+    target_stage: dev
+deployments:
+  docker_compose:
+    restart_policy: always
+    host_base_path: /export/docker
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '10'
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities:
+            - gpu
+            - compute
+            - compat32
+            - graphics
+            - utility
+            - video
+    volumes:
+    - config:/root/.stash
+    - data:/data
+    - metadata:/metadata
+    - cache:/cache
+    - blobs:/blobs
+    - generated:/generated
+    - local_time:/etc/localtime:ro
+    - nsfw_media:/nsfw
+    environment:
+      STASH_GENERATED: /generated
+      STASH_CACHE: /cache
+      DB_PASSWORD: '{{ secrets.DB_PASSWORD }}'
+      POSTGRES_DB: '{{ secrets.POSTGRES_DB }}'
+      POSTGRES_USER: '{{ secrets.POSTGRES_USER }}'
+      POSTGRES_PASSWORD: '{{ secrets.POSTGRES_PASSWORD }}'
+dependencies:
+  database:
+    import: catalog/postgres.yml
+    overrides:
+      name: aac-stash-db
+      image_tag: '18'
+      volumes:
+        db:
+          target: /var/lib/postgresql
+          description: Persistent storage for db
+vars: {}

@@ -1,0 +1,112 @@
+services:
+  # --- Main Application Service ---
+  aac-stash:
+    image: "stashapp/stash:v0.31.1"
+    container_name: "aac-stash"
+    hostname: "stash"
+    restart: "always"
+
+
+    environment:
+      STASH_GENERATED: "/generated"
+      STASH_CACHE: "/cache"
+      DB_PASSWORD: "${DB_PASSWORD:?set DB_PASSWORD in .env (see .env.example)}"
+      POSTGRES_DB: "stash"
+      POSTGRES_USER: "stash"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env (see .env.example)}"
+    ports:
+      - "9999:9999/tcp"
+
+    volumes:
+      - "/export/docker/aac-stash/config:/root/.stash"
+      - "/export/docker/aac-stash/data:/data"
+      - "/export/docker/aac-stash/metadata:/metadata"
+      - "/export/docker/aac-stash/cache:/cache"
+      - "/export/docker/aac-stash/blobs:/blobs"
+      - "/export/docker/aac-stash/generated:/generated"
+      - "/etc/localtime:/etc/localtime:ro"
+      - "/mnt/homenas/nsfw:/nsfw"
+
+    networks:
+      - exposed
+      - interconnect
+      - secured
+      - stack_internal
+
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.aac-stash.rule: "Host(`stash.example.com`)"
+      traefik.http.routers.aac-stash.entrypoints: "websecure"
+      traefik.http.routers.aac-stash.tls: "true"
+      traefik.http.routers.aac-stash.tls.certresolver: "ionos"
+      traefik.docker.network: "services-secured"
+      traefik.http.services.aac-stash.loadbalancer.server.port: "9999"
+      traefik.http.services.aac-stash.loadbalancer.server.scheme: "http"
+      auto-dns.createWildcard.aac-stash: "false"
+      auto-dns.customDNS.aac-stash: "true"
+      auto-dns.customDOMAIN.aac-stash: "example.com"
+      auto-dns.customHost.aac-stash: "stash"
+
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: '10'
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            count: all
+            capabilities:
+            - gpu
+            - compute
+            - compat32
+            - graphics
+            - utility
+            - video
+    depends_on:
+      aac-stash-db:
+        condition: service_healthy
+
+
+  # --- Service Dependencies (Sidecars) ---
+  aac-stash-db:
+    image: "postgres:18"
+    container_name: "aac-stash-db"
+    restart: "always"
+    
+
+    env_file:
+      - .env
+    volumes:
+      - "/export/docker/aac-stash/db:/var/lib/postgresql"
+
+    networks:
+      - stack_internal
+
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-postgres}\" -d \"$${POSTGRES_DB:-postgres}\""]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+
+
+
+networks:
+  secured:
+    name: "services-secured"
+    external: true
+  exposed:
+    name: "services-exposed"
+    external: true
+  interconnect:
+    name: "docker-default"
+    external: true
+  stack_internal:
+    name: "aac-stash_stack_internal"
+    driver: "bridge"
+
